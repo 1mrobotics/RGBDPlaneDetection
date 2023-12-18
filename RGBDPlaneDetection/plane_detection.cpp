@@ -1,6 +1,12 @@
 #include "plane_detection.h"
+#include "opencv2/opencv.hpp"
 #include <stdint.h>
 #include <iomanip> // output double value precision
+
+namespace py = pybind11;
+
+// -------------------- Python bindings: ----------------------------
+
 
 PlaneDetection::PlaneDetection()
 {
@@ -23,66 +29,116 @@ PlaneDetection::~PlaneDetection()
 	opt_plane_pixel_nums_.clear();
 	sum_stats_.clear();
 	opt_sum_stats_.clear();
+
 }
 
-// Temporarily don't need it since we set intrinsic parameters as constant values in the code.
-//bool PlaneDetection::readIntrinsicParameterFile(string filename)
-//{
-//	ifstream readin(filename, ios::in);
-//	if (readin.fail() || readin.eof())
-//	{
-//		cout << "WARNING: Cannot read intrinsics file " << filename << endl;
-//		return false;
-//	}
-//	string target_str = "m_calibrationDepthIntrinsic";
-//	string str_line, str, str_dummy;
-//	double dummy;
-//	bool read_success = false;
-//	while (!readin.eof() && !readin.fail())
-//	{
-//		getline(readin, str_line);
-//		if (readin.eof())
-//			break;
-//		istringstream iss(str_line);
-//		iss >> str;
-//		if (str == "m_depthWidth")
-//			iss >> str_dummy >> width_;
-//		else if (str == "m_depthHeight")
-//			iss >> str_dummy >> height_;
-//		else if (str == "m_calibrationDepthIntrinsic")
-//		{
-//			iss >> str_dummy >> fx_ >> dummy >> cx_ >> dummy >> dummy >> fy_ >> cy_;
-//			read_success = true;
-//			break;
-//		}
-//	}
-//	readin.close();
-//	if (read_success)
-//	{
-//		cloud.vertices.resize(height_ * width_);
-//		cloud.w = width_;
-//		cloud.h = height_;
-//	}
-//	return read_success;
-//}
+cv::Mat PlaneDetection::pyarray_to_cvmat_color(const py::array_t<uint8_t>& input) {
+    // Get information about the NumPy array
+    py::buffer_info buf_info = input.request();
 
-bool PlaneDetection::readColorImage(string filename)
+    // Check if the array has three dimensions
+    if (buf_info.ndim != 3 || buf_info.shape[2] != 3) {
+        throw std::runtime_error("Input array must have three dimensions (height x width x channels).");
+    }
+
+	// Ensure proper alignment by calculating the aligned step
+    size_t esz1 = buf_info.itemsize;  // size of one element in bytes
+    size_t step = buf_info.strides[0];  // original step
+
+    if (step % esz1 != 0) {
+        size_t aligned_step = (step / esz1 + 1) * esz1;
+        step = aligned_step;
+    }
+
+    // Create a cv::Mat using the data pointer from the NumPy array
+    cv::Mat cv_mat = cv::Mat(cv::Size(buf_info.shape[1], buf_info.shape[0]), CV_8UC3, buf_info.ptr, step);
+	cout << "cv mat size is " << cv_mat.size() << endl;
+	cv::imwrite("cpp_color.png", cv_mat);
+    return cv_mat; // cv_mat.clone();  // Clone the matrix to ensure data ownershipz
+}
+
+cv::Mat PlaneDetection::pyarray_to_cvmat_gray(const py::array_t<uint16_t>& input) {
+    // Get information about the NumPy array
+    py::buffer_info buf_info = input.request();
+
+    // Check if the array has two dimensions
+    if (buf_info.ndim != 2) {
+        throw std::runtime_error("Input array must have two dimensions (height x width).");
+    }
+	// Extract the data pointer and shape information
+	uint16_t *ptr = static_cast<uint16_t *>(buf_info.ptr);
+	int height = buf_info.shape[0];
+	int width = buf_info.shape[1];
+
+ //
+	// // Ensure proper alignment by calculating the aligned step
+ size_t esz1 = buf_info.itemsize;  // size of one element in bytes
+ size_t step = buf_info.strides[0];  // original step
+
+ if (step % esz1 != 0) {
+     size_t aligned_step = (step / esz1 + 1) * esz1;
+     step = aligned_step;
+ }
+
+
+    // Create a cv::Mat using the data pointer from the NumPy array
+    cv::Mat cv_mat(height, width, CV_16UC1, ptr, step);
+    // cv::Mat cv_mat = cv::Mat(cv::Size(buf_info.shape[1], buf_info.shape[0]), CV_16UC1, buf_info.ptr, step);
+	cv::imwrite("cpp_depth.png", cv_mat);
+    return cv_mat; // cv_mat.clone();  // Clone the matrix to ensure data ownership
+}
+
+
+py::array_t<uint8_t> PlaneDetection::cvmat_to_pyarray(cv::Mat& image) {
+    int width = image.cols;
+    int height = image.rows;
+
+    // Create a NumPy array
+    py::array_t<uint8_t> array({ height, width, image.channels() }, image.data);
+
+    return array;
+}
+
+
+bool PlaneDetection::setColorImage(const py::array_t<uchar>& img)
 {
-	color_img_ = cv::imread(filename, CV_LOAD_IMAGE_COLOR);
-	if (color_img_.empty() || color_img_.depth() != CV_8U)
-	{
-		cout << "ERROR: cannot read color image. No such a file, or the image format is not 8UC3" << endl;
+	color_img_ =  pyarray_to_cvmat_color(img);
+	if (color_img_.empty()){
+		cout << "ERROR: cannot read color image. No such a file" << endl;
+		return false;
+	}
+	if (color_img_.depth() != CV_8U){
+		cout << "ERROR: cannot read color image. The image format is not 8UC3" << endl;
 		return false;
 	}
 	return true;
 }
 
-bool PlaneDetection::readDepthImage(string filename)
+/************************************************************************/
+/* For MRF optimization */
+MRF::CostVal PlaneDetection::dCost(int pix, int label)
 {
-	cv::Mat depth_img = cv::imread(filename, CV_LOAD_IMAGE_ANYDEPTH);
-	if (depth_img.empty() || depth_img.depth() != CV_16U)
+	return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / kDepthWidth, pix % kDepthWidth) ? 1 : kInfVal);
+}
+MRF::CostVal PlaneDetection::fnCost(int pix1, int pix2, int i, int j)
+{
+	int gray1 = pixel_grayval_[pix1], gray2 = pixel_grayval_[pix2];
+	return i == j ? 0 : exp(-MRF::CostVal(gray1 - gray2) * (gray1 - gray2) / 900); // 900 = sigma^2 by default
+}
+/************************************************************************/
+
+
+bool PlaneDetection::setDepthImage(const py::array_t<uint16_t>& img)
+{
+	cv::Mat depth_img = pyarray_to_cvmat_gray(img);
+	// if (depth_img.empty() || depth_img.depth() != CV_16U)
+	if (depth_img.empty()){
+		cout << "ERROR: cannot read color image. No such a file" << endl;
+		return false;
+	}
+	if (depth_img.depth() != CV_16U)
 	{
-		cout << "WARNING: cannot read depth image. No such a file, or the image format is not 16UC1" << endl;
+		cout << "WARNING: cannot read depth image. The image format is not 16UC1" << endl;
 		return false;
 	}
 	int rows = depth_img.rows, cols = depth_img.cols;
@@ -103,6 +159,14 @@ bool PlaneDetection::readDepthImage(string filename)
 		}
 	}
 	return true;
+}
+
+py::array_t<uint8_t> PlaneDetection::getMembershipImg() {
+	return cvmat_to_pyarray(opt_membership_img_); // optimized membership image (plane index each pixel belongs to)
+}
+
+py::array_t<uint8_t> PlaneDetection::getSegImg() {
+	return cvmat_to_pyarray(opt_seg_img_); // optimized membership image (plane index each pixel belongs to)
 }
 
 bool PlaneDetection::runPlaneDetection()
@@ -126,14 +190,15 @@ void PlaneDetection::prepareForMRF()
 	opt_membership_img_ = cv::Mat(kDepthHeight, kDepthWidth, CV_32SC1);
 	pixel_boundary_flags_.resize(kDepthWidth * kDepthHeight, false);
 	pixel_grayval_.resize(kDepthWidth * kDepthHeight, 0);
-
 	cv::Mat& mat_label = plane_filter.membershipImg;
+
 	for (int row = 0; row < kDepthHeight; ++row)
 	{
 		for (int col = 0; col < kDepthWidth; ++col)
 		{
 			pixel_grayval_[row * kDepthWidth + col] = RGB2Gray(row, col);
 			int label = mat_label.at<int>(row, col);
+			// todo This is throwing an error
 			if ((row - 1 >= 0 && mat_label.at<int>(row - 1, col) != label)
 				|| (row + 1 < kDepthHeight && mat_label.at<int>(row + 1, col) != label)
 				|| (col - 1 >= 0 && mat_label.at<int>(row, col - 1) != label)
@@ -160,108 +225,10 @@ void PlaneDetection::prepareForMRF()
 		cv::Vec3b c = seg_img_.at<cv::Vec3b>(vidx / kDepthWidth, vidx % kDepthWidth);
 		plane_colors_.push_back(c);
 	}
+
 	plane_colors_.push_back(cv::Vec3b(0,0,0)); // black for pixels not in any plane
 }
 
-// Note: input filename_prefix is like '/rgbd-image-folder-path/frame-XXXXXX'
-void PlaneDetection::writeOutputFiles(string output_folder, string frame_name, bool run_mrf)
-{
-	computePlaneSumStats(run_mrf);
-
-	if (output_folder.back() != '\\' && output_folder.back() != '/')
-		output_folder += "/";	
-	string filename_prefix = output_folder + frame_name + "-plane";
-	cv::imwrite(filename_prefix + ".png", seg_img_);
-	writePlaneLabelFile(filename_prefix + "-label.txt");
-	writePlaneDataFile(filename_prefix + "-data.txt");
-	if (run_mrf)
-	{
-		cv::imwrite(filename_prefix + "-opt.png", opt_seg_img_);
-		writePlaneLabelFile(filename_prefix + "-label-opt.txt", run_mrf);
-		writePlaneDataFile(filename_prefix + "-data-opt.txt", run_mrf);
-	}
-	
-}
-void PlaneDetection::writePlaneLabelFile(string filename, bool run_mrf /* = false */)
-{
-	ofstream out(filename, ios::out);
-	out << plane_num_ << endl;
-	if (plane_num_ == 0)
-	{
-		out.close();
-		return;
-	}
-	for (int row = 0; row < kDepthHeight; ++row)
-	{
-		for (int col = 0; col < kDepthWidth; ++col)
-		{
-			int label = run_mrf ? opt_membership_img_.at<int>(row, col) : plane_filter.membershipImg.at<int>(row, col);
-			out << label << " ";
-		}
-		out << endl;
-	}
-	out.close();
-}
-
-void PlaneDetection::writePlaneDataFile(string filename, bool run_mrf /* = false */)
-{
-	ofstream out(filename, ios::out);
-	out << "#plane_index number_of_points_on_the_plane plane_color_in_png_image(1x3) plane_normal(1x3) plane_center(1x3) "
-		<< "sx sy sz sxx syy szz sxy syz sxz" << endl;
-
-	for (int pidx = 0; pidx < plane_num_; ++pidx)
-	{
-		out << pidx << " ";
-		if (!run_mrf)
-			out << plane_pixel_nums_[pidx] << " ";
-		else
-			out << opt_plane_pixel_nums_[pidx] << " ";
-
-		// Plane color in output image
-		int vidx = plane_vertices_[pidx][0];
-		cv::Vec3b c = seg_img_.at<cv::Vec3b>(vidx / kDepthWidth, vidx % kDepthWidth);
-		out << int(c.val[2]) << " " << int(c.val[1]) << " "<< int(c.val[0]) << " "; // OpenCV uses BGR by default
-
-		// Plane normal and center
-		int new_pidx = pid_to_extractedpid[pidx];
-		for (int i = 0; i < 3; ++i)
-			out << plane_filter.extractedPlanes[new_pidx]->normal[i] << " ";
-		for (int i = 0; i < 3; ++i)
-			out << plane_filter.extractedPlanes[new_pidx]->center[i] << " ";
-
-		// Sum of all points on the plane
-		if (run_mrf)
-		{
-			out << opt_sum_stats_[pidx].sx << std::setprecision(8) << " " 
-				<< opt_sum_stats_[pidx].sy << std::setprecision(8) << " " 
-				<< opt_sum_stats_[pidx].sz << std::setprecision(8) << " " 
-				<< opt_sum_stats_[pidx].sxx << std::setprecision(8) << " "
-				<< opt_sum_stats_[pidx].syy << std::setprecision(8) << " "
-				<< opt_sum_stats_[pidx].szz << std::setprecision(8) << " "
-				<< opt_sum_stats_[pidx].sxy << std::setprecision(8) << " "
-				<< opt_sum_stats_[pidx].syz << std::setprecision(8) << " "
-				<< opt_sum_stats_[pidx].sxz << std::setprecision(8) << endl;
-		}
-		else
-		{
-			out << sum_stats_[pidx].sx << std::setprecision(8) << " " 
-				<< sum_stats_[pidx].sy << std::setprecision(8) << " " 
-				<< sum_stats_[pidx].sz << std::setprecision(8) << " " 
-				<< sum_stats_[pidx].sxx << std::setprecision(8) << " "
-				<< sum_stats_[pidx].syy << std::setprecision(8) << " "
-				<< sum_stats_[pidx].szz << std::setprecision(8) << " "
-				<< sum_stats_[pidx].sxy << std::setprecision(8) << " "
-				<< sum_stats_[pidx].syz << std::setprecision(8) << " "
-				<< sum_stats_[pidx].sxz << std::setprecision(8) << endl;
-		}
-
-		// NOTE: the plane-sum parameters computed from AHC code seems different from that computed from points belonging to planes shown above.
-		// Seems there is a plane refinement step in AHC code so points belonging to each plane are slightly changed.
-		//ahc::PlaneSeg::Stats& stat = plane_filter.extractedPlanes[pidx]->stats;
-		//cout << stat.sx << " " << stat.sy << " " << stat.sz << " " << stat.sxx << " "<< stat.syy << " "<< stat.szz << " "<< stat.sxy << " "<< stat.syz << " "<< stat.sxz << endl;
-	}
-	out.close();
-}
 
 void PlaneDetection::computePlaneSumStats(bool run_mrf /* = false */)
 {
@@ -372,3 +339,16 @@ void PlaneDetection::computePlaneSumStats(bool run_mrf /* = false */)
 		cout << "Distance for plane " << pidx << ": " << sum << endl;
 	}
 }
+//
+//
+// PYBIND11_MODULE(plane_detection, m)
+// {
+// 	py::class_<PlaneDetection>(m, "PyPlaneDetection")
+// 	.def(py::init<>())
+// 	.def("set_color_image", &PlaneDetection::setColorImage)
+// 	.def("set_depth_image", &PlaneDetection::setDepthImage)
+// 	.def("get_opt_membership_img", &PlaneDetection::getMembershipImg)
+// 	.def("get_seg_img", &PlaneDetection::getSegImg)
+// 	.def("prepare_for_mrf", &PlaneDetection::prepareForMRF)
+// 	.def("run_plane_detection", &PlaneDetection::runPlaneDetection);
+// }

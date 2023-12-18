@@ -6,10 +6,15 @@
 #include <string>
 #include <fstream>
 #include <Eigen/Eigen>
-#include "AHCPlaneFitter.hpp"
-#include "mrf.h"
-#include "GCoptimization.h"
+#include "include/peac/AHCPlaneFitter.hpp"
+#include "include/MRF2.2/mrf.h"
+#include "include/MRF2.2/GCoptimization.h"
 #include <unordered_map>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
+#include <vector>
+
 
 using namespace std;
 
@@ -61,6 +66,8 @@ struct SumStats
 	}
 };
 
+namespace py = pybind11;
+
 class PlaneDetection
 {
 public:
@@ -81,39 +88,55 @@ public:
 	vector<int> plane_pixel_nums_, opt_plane_pixel_nums_; // number of pixels each plane has
 	unordered_map<int, int> pid_to_extractedpid; // plane index -> extracted plane index of plane_filter.extractedPlanes
 	unordered_map<int, int> extractedpid_to_pid; // extracted plane index -> plane index
-
 public:
 	PlaneDetection();
 	~PlaneDetection();
 
 	//bool readIntrinsicParameterFile(string filename);
 
-	bool readColorImage(string filename);
+	// bool readColorImage(string filename);
+	//
+	// bool readDepthImage(string filename);
 
-	bool readDepthImage(string filename);
+	bool setColorImage(const py::array_t<uchar>& img);
+
+	bool setDepthImage(const py::array_t<uint16_t>& img);
 
 	bool runPlaneDetection();
 
 	void prepareForMRF();
 
-	void writeOutputFiles(string output_folder, string frame_name, bool run_mrf = false);
+	py::array_t<uint8_t>  getMembershipImg();
+	py::array_t<uint8_t>  getSegImg();
+	cv::Mat deepCopy(const cv::Mat& orig_mat);
 
-	void writePlaneDataFile(string filename, bool run_mrf = false);
+	cv::Mat pyarray_to_cvmat_color(const py::array_t<uint8_t>& input);
+	cv::Mat pyarray_to_cvmat_gray(const py::array_t<uint16_t>& input);
+	void runMRFOptimization();
 
-	void writePlaneLabelFile(string filename, bool run_mrf = false);
+	py::array_t<uint8_t> cvmat_to_pyarray(cv::Mat& image);
 
-	/************************************************************************/
-	/* For MRF optimization */
-	inline MRF::CostVal dCost(int pix, int label)
-	{
-		return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / kDepthWidth, pix % kDepthWidth) ? 1 : kInfVal);
-	}
-	inline MRF::CostVal fnCost(int pix1, int pix2, int i, int j)
-	{
-		int gray1 = pixel_grayval_[pix1], gray2 = pixel_grayval_[pix2];
-		return i == j ? 0 : exp(-MRF::CostVal(gray1 - gray2) * (gray1 - gray2) / 900); // 900 = sigma^2 by default
-	}
-	/************************************************************************/
+	// void writeOutputFiles(string output_folder, string frame_name, bool run_mrf = false);
+	//
+	// void writePlaneDataFile(string filename, bool run_mrf = false);
+	//
+	// void writePlaneLabelFile(string filename, bool run_mrf = false);
+
+	// /************************************************************************/
+	// /* For MRF optimization */
+	// inline MRF::CostVal dCost(int pix, int label)
+	// {
+	// 	return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / kDepthWidth, pix % kDepthWidth) ? 1 : kInfVal);
+	// }
+	// inline MRF::CostVal fnCost(int pix1, int pix2, int i, int j)
+	// {
+	// 	int gray1 = pixel_grayval_[pix1], gray2 = pixel_grayval_[pix2];
+	// 	return i == j ? 0 : exp(-MRF::CostVal(gray1 - gray2) * (gray1 - gray2) / 900); // 900 = sigma^2 by default
+	// }
+	// /************************************************************************/
+
+	MRF::CostVal dCost(int pix, int label);
+	MRF::CostVal fnCost(int pix1, int pix2, int i, int j);
 
 private:
 	inline int RGB2Gray(int x, int y)
@@ -127,6 +150,5 @@ private:
 	void computePlaneSumStats(bool run_mrf = false);
 
 };
-
 
 #endif

@@ -8,7 +8,7 @@ CC = g++
 
 WARN = -W -Wall
 OPT ?= -O3
-CPPFLAGS = $(OPT) $(WARN) -DUSE_64_BIT_PTR_CAST
+CPPFLAGS = $(OPT) $(WARN) -DUSE_64_BIT_PTR_CAST -fPIC
 #CPPFLAGS = $(OPT) $(WARN)   ### use this line instead to compile on 32-bit systems
 
 OBJ = $(SRC:.cpp=.o)
