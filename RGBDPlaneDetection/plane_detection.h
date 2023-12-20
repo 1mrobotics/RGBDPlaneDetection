@@ -34,6 +34,7 @@ const double kCy = 240;
 const int kDepthWidth = 640;
 const int kDepthHeight = 480;
 
+
 #if defined(__linux__) || defined(__APPLE__)
 #define _isnan(x) isnan(x)
 #endif
@@ -78,6 +79,12 @@ public:
 	cv::Mat color_img_; // input color image
 	int plane_num_;
 
+	// plane fitter params 
+    int min_support_; // minimum number of points on a plane Todo: not clear what units this is 
+	int window_height_;
+	int window_width_;
+	int max_step_;
+
 	/* For MRF optimization */
 	cv::Mat opt_seg_img_;
 	cv::Mat opt_membership_img_; // optimized membership image (plane index each pixel belongs to)
@@ -119,6 +126,11 @@ public:
 	void runMRFOptimization();
 
 	py::array_t<uint8_t> cvmat_to_pyarray(cv::Mat& image);
+
+	// plane fitter params 
+	void setMinSupport(int minSupport);
+	void setMaxStep(int maxStep);
+	void setWindowSize(int windowWidth, int windowHeight);
 
 	// void writeOutputFiles(string output_folder, string frame_name, bool run_mrf = false);
 	//

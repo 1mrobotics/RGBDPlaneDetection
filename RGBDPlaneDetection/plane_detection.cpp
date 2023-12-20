@@ -176,27 +176,47 @@ py::array_t<double> PlaneDetection::getPlaneNormals()
 
 	for (int pidx = 0; pidx < plane_num_; ++pidx)
 	{
-		doubleVector.insert(doubleVector.end(), plane_filter.extractedPlanes[pidx]->normal[0], plane_filter.extractedPlanes[pidx]->normal[2]);
+		doubleVector.insert(doubleVector.end(), std::begin(plane_filter.extractedPlanes[pidx]->normal), std::end(plane_filter.extractedPlanes[pidx]->normal));
 	}
-    py::array_t<double> normals({plane_num_, 3}, doubleVector);
+	py::array_t<double> normals({plane_num_, 3}, &doubleVector[0]);
 	return normals;
 }
 
 py::array_t<double> PlaneDetection::getPlaneCenters()
-{
+{	
 	// Create a vector of double arrays
 	std::vector<double> doubleVector;
 
 	for (int pidx = 0; pidx < plane_num_; ++pidx)
 	{
-		doubleVector.insert(doubleVector.end(), plane_filter.extractedPlanes[pidx]->center[0], plane_filter.extractedPlanes[pidx]->center[2]);
+		doubleVector.insert(doubleVector.end(), std::begin(plane_filter.extractedPlanes[pidx]->center), std::end(plane_filter.extractedPlanes[pidx]->center));
 	}
-    py::array_t<double> centers({plane_num_, 3}, doubleVector);
+	py::array_t<double> centers({plane_num_, 3}, &doubleVector[0]);
 	return centers;
+}
+
+void PlaneDetection::setMinSupport(int minSupport)
+{
+	min_support_ = minSupport;
+}
+
+void PlaneDetection::setMaxStep(int maxStep)
+{
+	//max number of steps for merging clusters
+	max_step_ = maxStep;
+}
+
+void PlaneDetection::setWindowSize(int width, int height)
+{
+	//make sure width is divisible by windowWidth
+	//similarly for height and windowHeight
+	window_height_ = height;
+	window_width_ = width; 
 }
 
 bool PlaneDetection::runPlaneDetection()
 {
+	plane_filter.minSupport = min_support_; 
 	seg_img_ = cv::Mat(kDepthHeight, kDepthWidth, CV_8UC3);
 	plane_filter.run(&cloud, &plane_vertices_, &seg_img_);
 	plane_num_ = (int)plane_vertices_.size();
