@@ -13,10 +13,11 @@ set(CMAKE_INSTALL_PREFIX usr/local)
 
 # put FindGLFW.cmake in the source directory of CMakeLists.txt
 find_package(OpenCV REQUIRED  core imgcodecs imgproc)
+find_package(Eigen3 REQUIRED)
 
 include_directories(/usr/include/python3.10)
 include_directories(${OpenCV_INCLUDE_DIRS})
-include_directories(/usr/local/include/eigen3)
+include_directories(${EIGEN3_INCLUDE_DIRS})
 include_directories(include/peac)
 include_directories(include/MRF2.2)
 #
