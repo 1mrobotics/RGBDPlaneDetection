@@ -176,9 +176,9 @@ py::array_t<double> PlaneDetection::getPlaneNormals()
 
 	for (int pidx = 0; pidx < plane_num_; ++pidx)
 	{
-		doubleVector.insert(doubleVector.end(), plane_filter.extractedPlanes[pidx]->normal[0], plane_filter.extractedPlanes[pidx]->normal[2]);
+		doubleVector.insert(doubleVector.end(), std::begin(plane_filter.extractedPlanes[pidx]->normal), std::end(plane_filter.extractedPlanes[pidx]->normal));
 	}
-    py::array_t<double> normals({plane_num_, 3}, doubleVector);
+	py::array_t<double> normals({plane_num_, 3}, &doubleVector[0]);
 	return normals;
 }
 
@@ -189,9 +189,9 @@ py::array_t<double> PlaneDetection::getPlaneCenters()
 
 	for (int pidx = 0; pidx < plane_num_; ++pidx)
 	{
-		doubleVector.insert(doubleVector.end(), plane_filter.extractedPlanes[pidx]->center[0], plane_filter.extractedPlanes[pidx]->center[2]);
+		doubleVector.insert(doubleVector.end(), std::begin(plane_filter.extractedPlanes[pidx]->center), std::end(plane_filter.extractedPlanes[pidx]->center));
 	}
-    py::array_t<double> centers({plane_num_, 3}, doubleVector);
+	py::array_t<double> centers({plane_num_, 3}, &doubleVector[0]);
 	return centers;
 }
 
