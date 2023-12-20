@@ -77,7 +77,9 @@ namespace py = pybind11;
 		.def("get_opt_membership_img", &PlaneDetection::getMembershipImg)
 		.def("get_seg_img", &PlaneDetection::getSegImg)
 		.def("prepare_for_mrf", &PlaneDetection::prepareForMRF)
-		.def("run_plane_detection", &PlaneDetection::runPlaneDetection);
+		.def("run_plane_detection", &PlaneDetection::runPlaneDetection)
+		.def("get_plane_normals", &PlaneDetection::getPlaneNormals)
+		.def("get_plane_centers", &PlaneDetection::getPlaneCenters);
 		m.def("set_plane_detection", &setPlaneDetection);
 		m.def("run_mrf_optimization", &runMRFOptimization);
 	}

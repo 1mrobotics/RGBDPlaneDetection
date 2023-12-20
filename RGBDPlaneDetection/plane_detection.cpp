@@ -169,6 +169,32 @@ py::array_t<uint8_t> PlaneDetection::getSegImg() {
 	return cvmat_to_pyarray(opt_seg_img_); // optimized membership image (plane index each pixel belongs to)
 }
 
+py::array_t<double> PlaneDetection::getPlaneNormals()
+{	
+	// Create a vector of double arrays
+	std::vector<double> doubleVector;
+
+	for (int pidx = 0; pidx < plane_num_; ++pidx)
+	{
+		doubleVector.insert(doubleVector.end(), plane_filter.extractedPlanes[pidx]->normal[0], plane_filter.extractedPlanes[pidx]->normal[2]);
+	}
+    py::array_t<double> normals({plane_num_, 3}, doubleVector);
+	return normals;
+}
+
+py::array_t<double> PlaneDetection::getPlaneCenters()
+{
+	// Create a vector of double arrays
+	std::vector<double> doubleVector;
+
+	for (int pidx = 0; pidx < plane_num_; ++pidx)
+	{
+		doubleVector.insert(doubleVector.end(), plane_filter.extractedPlanes[pidx]->center[0], plane_filter.extractedPlanes[pidx]->center[2]);
+	}
+    py::array_t<double> centers({plane_num_, 3}, doubleVector);
+	return centers;
+}
+
 bool PlaneDetection::runPlaneDetection()
 {
 	seg_img_ = cv::Mat(kDepthHeight, kDepthWidth, CV_8UC3);
@@ -339,16 +365,4 @@ void PlaneDetection::computePlaneSumStats(bool run_mrf /* = false */)
 		cout << "Distance for plane " << pidx << ": " << sum << endl;
 	}
 }
-//
-//
-// PYBIND11_MODULE(plane_detection, m)
-// {
-// 	py::class_<PlaneDetection>(m, "PyPlaneDetection")
-// 	.def(py::init<>())
-// 	.def("set_color_image", &PlaneDetection::setColorImage)
-// 	.def("set_depth_image", &PlaneDetection::setDepthImage)
-// 	.def("get_opt_membership_img", &PlaneDetection::getMembershipImg)
-// 	.def("get_seg_img", &PlaneDetection::getSegImg)
-// 	.def("prepare_for_mrf", &PlaneDetection::prepareForMRF)
-// 	.def("run_plane_detection", &PlaneDetection::runPlaneDetection);
-// }
+

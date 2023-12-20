@@ -88,6 +88,7 @@ public:
 	vector<int> plane_pixel_nums_, opt_plane_pixel_nums_; // number of pixels each plane has
 	unordered_map<int, int> pid_to_extractedpid; // plane index -> extracted plane index of plane_filter.extractedPlanes
 	unordered_map<int, int> extractedpid_to_pid; // extracted plane index -> plane index
+
 public:
 	PlaneDetection();
 	~PlaneDetection();
@@ -108,6 +109,9 @@ public:
 
 	py::array_t<uint8_t>  getMembershipImg();
 	py::array_t<uint8_t>  getSegImg();
+	py::array_t<double>  getPlaneNormals();
+	py::array_t<double> getPlaneCenters();
+
 	cv::Mat deepCopy(const cv::Mat& orig_mat);
 
 	cv::Mat pyarray_to_cvmat_color(const py::array_t<uint8_t>& input);
