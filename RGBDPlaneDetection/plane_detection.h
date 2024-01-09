@@ -116,6 +116,7 @@ public:
 
 	py::array_t<uint8_t>  getMembershipImg();
 	py::array_t<uint8_t>  getSegImg();
+	py::array_t<uint8_t>  getSegImgOptimized();
 	py::array_t<double>  getPlaneNormals();
 	py::array_t<double> getPlaneCenters();
 

@@ -162,12 +162,18 @@ bool PlaneDetection::setDepthImage(const py::array_t<uint16_t>& img)
 }
 
 py::array_t<uint8_t> PlaneDetection::getMembershipImg() {
-	return cvmat_to_pyarray(opt_membership_img_); // optimized membership image (plane index each pixel belongs to)
+	return cvmat_to_pyarray(seg_img_); // optimized membership image (plane index each pixel belongs to)
 }
 
-py::array_t<uint8_t> PlaneDetection::getSegImg() {
+py::array_t<uint8_t> PlaneDetection::getSegImgOptimized() {
 	return cvmat_to_pyarray(opt_seg_img_); // optimized membership image (plane index each pixel belongs to)
 }
+
+
+py::array_t<uint8_t> PlaneDetection::getSegImg() {
+	return cvmat_to_pyarray(seg_img_); // membership image (plane index each pixel belongs to)
+}
+
 
 py::array_t<double> PlaneDetection::getPlaneNormals()
 {	
@@ -363,26 +369,26 @@ void PlaneDetection::computePlaneSumStats(bool run_mrf /* = false */)
 
 	//--------------------------------------------------------------
 	// Only for debug. It doesn't influence the plane detection.
-	for (int pidx = 0; pidx < plane_num_; ++pidx)
-	{
-		double w = 0;
-		//for (int j = 0; j < 3; ++j)
-		//	w -= plane_filter.extractedPlanes[pidx]->normal[j] * plane_filter.extractedPlanes[pidx]->center[j];
-		w -= plane_filter.extractedPlanes[pidx]->normal[0] * sum_stats_[pidx].sx;
-		w -= plane_filter.extractedPlanes[pidx]->normal[1] * sum_stats_[pidx].sy;
-		w -= plane_filter.extractedPlanes[pidx]->normal[2] * sum_stats_[pidx].sz;
-		double sum = 0;
-		for (int i = 0; i < plane_vertices_[pidx].size(); ++i)
-		{
-			int vidx = plane_vertices_[pidx][i];
-			const VertexType& v = cloud.vertices[vidx];
-			double dis = w;
-			for (int j = 0; j < 3; ++j)
-				dis += v[j] * plane_filter.extractedPlanes[pidx]->normal[j];
-			sum += dis * dis;
-		}
-		sum /= plane_vertices_[pidx].size();
-		cout << "Distance for plane " << pidx << ": " << sum << endl;
-	}
+//	for (int pidx = 0; pidx < plane_num_; ++pidx)
+//	{
+//		double w = 0;
+//		//for (int j = 0; j < 3; ++j)
+//		//	w -= plane_filter.extractedPlanes[pidx]->normal[j] * plane_filter.extractedPlanes[pidx]->center[j];
+//		w -= plane_filter.extractedPlanes[pidx]->normal[0] * sum_stats_[pidx].sx;
+//		w -= plane_filter.extractedPlanes[pidx]->normal[1] * sum_stats_[pidx].sy;
+//		w -= plane_filter.extractedPlanes[pidx]->normal[2] * sum_stats_[pidx].sz;
+//		double sum = 0;
+//		for (int i = 0; i < plane_vertices_[pidx].size(); ++i)
+//		{
+//			int vidx = plane_vertices_[pidx][i];
+//			const VertexType& v = cloud.vertices[vidx];
+//			double dis = w;
+//			for (int j = 0; j < 3; ++j)
+//				dis += v[j] * plane_filter.extractedPlanes[pidx]->normal[j];
+//			sum += dis * dis;
+//		}
+//		sum /= plane_vertices_[pidx].size();
+//		cout << "Distance for plane " << pidx << ": " << sum << endl;
+//	}
 }
 

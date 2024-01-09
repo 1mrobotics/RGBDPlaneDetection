@@ -76,6 +76,7 @@ namespace py = pybind11;
 		.def("set_depth_image", &PlaneDetection::setDepthImage)
 		.def("get_opt_membership_img", &PlaneDetection::getMembershipImg)
 		.def("get_seg_img", &PlaneDetection::getSegImg)
+		.def("get_seg_img_optimized", &PlaneDetection::getSegImgOptimized)
 		.def("prepare_for_mrf", &PlaneDetection::prepareForMRF)
 		.def("run_plane_detection", &PlaneDetection::runPlaneDetection)
 		.def("get_plane_normals", &PlaneDetection::getPlaneNormals)
