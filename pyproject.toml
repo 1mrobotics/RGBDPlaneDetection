@@ -1,0 +1,11 @@
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "plane_detection"
+version = "1.0"
+requires-python = ">=3.11"
+
+[tool.scikit-build]
+cmake.source-dir = "RGBDPlaneDetection"
