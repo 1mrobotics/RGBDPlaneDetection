@@ -25,7 +25,7 @@ void runMRFOptimization()
 	DataCost *data = new DataCost(dCost);
 	SmoothnessCost *smooth = new SmoothnessCost(fnCost);
 	EnergyFunction *energy = new EnergyFunction(data, smooth);
-	int width = kDepthWidth, height = kDepthHeight;
+	int width = plane_detection.depthWidth_, height = plane_detection.depthHeight_;
 	MRF* mrf = new Expansion(width * height, plane_detection.plane_num_ + 1, energy);
 	// Set neighbors for the graph
 	for (int row = 0; row < height; row++)
@@ -74,18 +74,19 @@ namespace py = pybind11;
 		.def(py::init<>())
 		.def("set_color_image", &PlaneDetection::setColorImage)
 		.def("set_depth_image", &PlaneDetection::setDepthImage)
+		.def("set_plane_fitter_min_support", &PlaneDetection::setPlaneFitterMinSupport)
+		.def("set_plane_fitter_max_step", &PlaneDetection::setPlaneFitterMaxStep)
+		.def("set_plane_fitter_window_size", &PlaneDetection::setPlaneFitterWindowSize)
+		.def("set_camera_intrinsic", &PlaneDetection::setCameraIntrinsic)
+		.def("set_depth_image_params", &PlaneDetection::setDepthImageParams)
+		.def("set_mrf_params", &PlaneDetection::setMrfParams)
 		.def("get_opt_membership_img", &PlaneDetection::getMembershipImg)
-		.def("get_seg_img", &PlaneDetection::getSegImg)
 		.def("get_seg_img_optimized", &PlaneDetection::getSegImgOptimized)
-		.def("prepare_for_mrf", &PlaneDetection::prepareForMRF)
-		.def("run_plane_detection", &PlaneDetection::runPlaneDetection)
+		.def("get_seg_img", &PlaneDetection::getSegImg)
 		.def("get_plane_normals", &PlaneDetection::getPlaneNormals)
 		.def("get_plane_centers", &PlaneDetection::getPlaneCenters)
-		.def("set_max_step", &PlaneDetection::setMaxStep)
-		.def("set_window_size", &PlaneDetection::setWindowSize)
-		.def("set_min_support", &PlaneDetection::setMinSupport);
+		.def("prepare_for_mrf", &PlaneDetection::prepareForMRF)
+		.def("run_plane_detection", &PlaneDetection::runPlaneDetection);
 		m.def("set_plane_detection", &setPlaneDetection);
 		m.def("run_mrf_optimization", &runMRFOptimization);
 	}
-
-

@@ -21,20 +21,6 @@ using namespace std;
 typedef Eigen::Vector3d VertexType;
 typedef Eigen::Vector2i PixelPos;
 
-const int kNeighborRange = 5; // boundary pixels' neighbor range
-const int kScaleFactor = 5; // scale coordinate unit in mm
-const float kInfVal = 1000000; // an infinite large value used in MRF optimization
-
-// Camera intrinsic parameters.
-// All BundleFusion data uses the following parameters.
-const double kFx = 583;
-const double kFy = 583;
-const double kCx = 320;
-const double kCy = 240;
-const int kDepthWidth = 640;
-const int kDepthHeight = 480;
-
-
 #if defined(__linux__) || defined(__APPLE__)
 #define _isnan(x) isnan(x)
 #endif
@@ -78,14 +64,22 @@ public:
 	cv::Mat seg_img_; // segmentation image
 	cv::Mat color_img_; // input color image
 	int plane_num_;
-
-	// plane fitter params 
-    int min_support_; // minimum number of points on a plane Todo: not clear what units this is 
-	int window_height_;
-	int window_width_;
-	int max_step_;
+	
+	
+	// Camera intrinsic parameters.
+	// All BundleFusion data uses the following parameters.
+	double fx_;
+	double fy_;
+	double cx_;
+	double cy_;
+	int depthWidth_;
+	int depthHeight_;
+	int depthImageZScaleFactor_; // scale coordinate unit in mm
 
 	/* For MRF optimization */
+	int neighborRange_; // boundary pixels' neighbor range in MRF
+	float infVal_; // an infinite large value used in MRF optimization
+
 	cv::Mat opt_seg_img_;
 	cv::Mat opt_membership_img_; // optimized membership image (plane index each pixel belongs to)
 	vector<bool> pixel_boundary_flags_; // pixel is a plane boundary pixel or not
@@ -107,18 +101,26 @@ public:
 	// bool readDepthImage(string filename);
 
 	bool setColorImage(const py::array_t<uchar>& img);
-
 	bool setDepthImage(const py::array_t<uint16_t>& img);
+	// plane fitter params 
+	void setPlaneFitterMinSupport(int minSupport); // minimum number of points on a plane Todo: not clear what units this is 
+	void setPlaneFitterMaxStep(int maxStep);
+	void setPlaneFitterWindowSize(int windowWidth, int windowHeight);
+	// Camera intrinsic parameters.
+	void setCameraIntrinsic(double fx, double fy, double cx, double cy);
+	void setDepthImageParams(int width, int height, double imageZScaleFactor);
+	// MRF optimization params
+	void setMrfParams(int neighborRange, float infVal);
+
+	py::array_t<uint8_t>  getMembershipImg();
+	py::array_t<uint8_t>  getSegImgOptimized();
+	py::array_t<uint8_t>  getSegImg();
+	py::array_t<double>  getPlaneNormals();
+	py::array_t<double> getPlaneCenters();
 
 	bool runPlaneDetection();
 
 	void prepareForMRF();
-
-	py::array_t<uint8_t>  getMembershipImg();
-	py::array_t<uint8_t>  getSegImg();
-	py::array_t<uint8_t>  getSegImgOptimized();
-	py::array_t<double>  getPlaneNormals();
-	py::array_t<double> getPlaneCenters();
 
 	cv::Mat deepCopy(const cv::Mat& orig_mat);
 
@@ -128,10 +130,7 @@ public:
 
 	py::array_t<uint8_t> cvmat_to_pyarray(cv::Mat& image);
 
-	// plane fitter params 
-	void setMinSupport(int minSupport);
-	void setMaxStep(int maxStep);
-	void setWindowSize(int windowWidth, int windowHeight);
+	
 
 	// void writeOutputFiles(string output_folder, string frame_name, bool run_mrf = false);
 	//
@@ -143,7 +142,7 @@ public:
 	// /* For MRF optimization */
 	// inline MRF::CostVal dCost(int pix, int label)
 	// {
-	// 	return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / kDepthWidth, pix % kDepthWidth) ? 1 : kInfVal);
+	// 	return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / depthWidth_, pix % depthWidth_) ? 1 : kInfVal);
 	// }
 	// inline MRF::CostVal fnCost(int pix1, int pix2, int i, int j)
 	// {
