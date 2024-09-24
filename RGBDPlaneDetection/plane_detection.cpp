@@ -8,12 +8,7 @@ namespace py = pybind11;
 // -------------------- Python bindings: ----------------------------
 
 
-PlaneDetection::PlaneDetection()
-{
-	cloud.vertices.resize(kDepthHeight * kDepthWidth);
-	cloud.w = kDepthWidth;
-	cloud.h = kDepthHeight;
-}
+PlaneDetection::PlaneDetection(){}
 
 PlaneDetection::~PlaneDetection()
 {
@@ -70,16 +65,14 @@ cv::Mat PlaneDetection::pyarray_to_cvmat_gray(const py::array_t<uint16_t>& input
 	int height = buf_info.shape[0];
 	int width = buf_info.shape[1];
 
- //
 	// // Ensure proper alignment by calculating the aligned step
- size_t esz1 = buf_info.itemsize;  // size of one element in bytes
- size_t step = buf_info.strides[0];  // original step
+	size_t esz1 = buf_info.itemsize;  // size of one element in bytes
+	size_t step = buf_info.strides[0];  // original step
 
- if (step % esz1 != 0) {
-     size_t aligned_step = (step / esz1 + 1) * esz1;
-     step = aligned_step;
- }
-
+	if (step % esz1 != 0) {
+		size_t aligned_step = (step / esz1 + 1) * esz1;
+		step = aligned_step;
+ 	}	
 
     // Create a cv::Mat using the data pointer from the NumPy array
     cv::Mat cv_mat(height, width, CV_16UC1, ptr, step);
@@ -99,6 +92,20 @@ py::array_t<uint8_t> PlaneDetection::cvmat_to_pyarray(cv::Mat& image) {
     return array;
 }
 
+/************************************************************************/
+/* For MRF optimization */
+MRF::CostVal PlaneDetection::dCost(int pix, int label)
+{
+	return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / depthWidth_, pix % depthWidth_) ? 1 : infVal_);
+}
+MRF::CostVal PlaneDetection::fnCost(int pix1, int pix2, int i, int j)
+{
+	int gray1 = pixel_grayval_[pix1], gray2 = pixel_grayval_[pix2];
+	return i == j ? 0 : exp(-MRF::CostVal(gray1 - gray2) * (gray1 - gray2) / 900); // 900 = sigma^2 by default
+}
+/************************************************************************/
+
+#pragma region Setters
 
 bool PlaneDetection::setColorImage(const py::array_t<uchar>& img)
 {
@@ -113,20 +120,6 @@ bool PlaneDetection::setColorImage(const py::array_t<uchar>& img)
 	}
 	return true;
 }
-
-/************************************************************************/
-/* For MRF optimization */
-MRF::CostVal PlaneDetection::dCost(int pix, int label)
-{
-	return pixel_boundary_flags_[pix] ? 1 : (label == plane_filter.membershipImg.at<int>(pix / kDepthWidth, pix % kDepthWidth) ? 1 : kInfVal);
-}
-MRF::CostVal PlaneDetection::fnCost(int pix1, int pix2, int i, int j)
-{
-	int gray1 = pixel_grayval_[pix1], gray2 = pixel_grayval_[pix2];
-	return i == j ? 0 : exp(-MRF::CostVal(gray1 - gray2) * (gray1 - gray2) / 900); // 900 = sigma^2 by default
-}
-/************************************************************************/
-
 
 bool PlaneDetection::setDepthImage(const py::array_t<uint16_t>& img)
 {
@@ -147,19 +140,58 @@ bool PlaneDetection::setDepthImage(const py::array_t<uint16_t>& img)
 	{
 		for (int j = 0; j < cols; ++j)
 		{
-			double z = (double)(depth_img.at<unsigned short>(i, j)) / kScaleFactor;
+			double z = (double)(depth_img.at<unsigned short>(i, j)) / depthImageZScaleFactor_;
 			if (_isnan(z))
 			{
 				cloud.vertices[vertex_idx++] = VertexType(0, 0, z);
 				continue;
 			}
-			double x = ((double)j - kCx) * z / kFx;
-			double y = ((double)i - kCy) * z / kFy;
+			double x = ((double)j - cx_) * z / fx_;
+			double y = ((double)i - cy_) * z / fy_;
 			cloud.vertices[vertex_idx++] = VertexType(x, y, z);
 		}
 	}
 	return true;
 }
+
+void PlaneDetection::setPlaneFitterMinSupport(int minSupport) { plane_filter.minSupport = minSupport; }
+
+//max number of steps for merging clusters
+void PlaneDetection::setPlaneFitterMaxStep(int maxStep) { plane_filter.maxStep = maxStep; }
+
+void PlaneDetection::setPlaneFitterWindowSize(int width, int height)
+{
+	plane_filter.windowWidth = width; 
+	plane_filter.windowHeight = height; 
+}
+
+void PlaneDetection::setCameraIntrinsic(double fx=583, double fy=583, double cx=320, double cy=240)
+{
+	fx_ = fx;
+	fy_ = fy;
+	cx_ = cx;
+	cy_ = cy;
+}
+
+void PlaneDetection::setDepthImageParams(int width=640, int height=480, double imageZScaleFactor=5)
+{
+	depthWidth_ = width;
+	depthHeight_ = height;
+	cloud.vertices.resize(depthHeight_ * depthWidth_);
+	cloud.w = depthWidth_;
+	cloud.h = depthHeight_;
+	depthImageZScaleFactor_ = imageZScaleFactor;
+}
+
+void PlaneDetection::setMrfParams(int neighborRange=5, float infVal=1000000) 
+{ 
+	neighborRange_ = neighborRange;
+	infVal_ = infVal;
+}
+
+#pragma endregion Setters
+
+#pragma region Getters
 
 py::array_t<uint8_t> PlaneDetection::getMembershipImg() {
 	return cvmat_to_pyarray(seg_img_); // optimized membership image (plane index each pixel belongs to)
@@ -201,36 +233,18 @@ py::array_t<double> PlaneDetection::getPlaneCenters()
 	return centers;
 }
 
-void PlaneDetection::setMinSupport(int minSupport)
-{
-	min_support_ = minSupport;
-}
-
-void PlaneDetection::setMaxStep(int maxStep)
-{
-	//max number of steps for merging clusters
-	max_step_ = maxStep;
-}
-
-void PlaneDetection::setWindowSize(int width, int height)
-{
-	//make sure width is divisible by windowWidth
-	//similarly for height and windowHeight
-	window_height_ = height;
-	window_width_ = width; 
-}
+#pragma endregion Getters
 
 bool PlaneDetection::runPlaneDetection()
 {
-	plane_filter.minSupport = min_support_; 
-	seg_img_ = cv::Mat(kDepthHeight, kDepthWidth, CV_8UC3);
+	seg_img_ = cv::Mat(depthHeight_, depthWidth_, CV_8UC3);
 	plane_filter.run(&cloud, &plane_vertices_, &seg_img_);
 	plane_num_ = (int)plane_vertices_.size();
 
 	// Here we set the plane index of a pixel which does NOT belong to any plane as #planes.
 	// This is for using MRF optimization later.
-	for (int row = 0; row < kDepthHeight; ++row)
-		for (int col = 0; col < kDepthWidth; ++col)
+	for (int row = 0; row < depthHeight_; ++row)
+		for (int col = 0; col < depthWidth_; ++col)
 			if (plane_filter.membershipImg.at<int>(row, col) < 0)
 				plane_filter.membershipImg.at<int>(row, col) = plane_num_;
 	return true;
@@ -238,33 +252,33 @@ bool PlaneDetection::runPlaneDetection()
 
 void PlaneDetection::prepareForMRF()
 {
-	opt_seg_img_ = cv::Mat(kDepthHeight, kDepthWidth, CV_8UC3);
-	opt_membership_img_ = cv::Mat(kDepthHeight, kDepthWidth, CV_32SC1);
-	pixel_boundary_flags_.resize(kDepthWidth * kDepthHeight, false);
-	pixel_grayval_.resize(kDepthWidth * kDepthHeight, 0);
+	opt_seg_img_ = cv::Mat(depthHeight_, depthWidth_, CV_8UC3);
+	opt_membership_img_ = cv::Mat(depthHeight_, depthWidth_, CV_32SC1);
+	pixel_boundary_flags_.resize(depthWidth_ * depthHeight_, false);
+	pixel_grayval_.resize(depthWidth_ * depthHeight_, 0);
 	cv::Mat& mat_label = plane_filter.membershipImg;
 
-	for (int row = 0; row < kDepthHeight; ++row)
+	for (int row = 0; row < depthHeight_; ++row)
 	{
-		for (int col = 0; col < kDepthWidth; ++col)
+		for (int col = 0; col < depthWidth_; ++col)
 		{
-			pixel_grayval_[row * kDepthWidth + col] = RGB2Gray(row, col);
+			pixel_grayval_[row * depthWidth_ + col] = RGB2Gray(row, col);
 			int label = mat_label.at<int>(row, col);
 			// todo This is throwing an error
 			if ((row - 1 >= 0 && mat_label.at<int>(row - 1, col) != label)
-				|| (row + 1 < kDepthHeight && mat_label.at<int>(row + 1, col) != label)
+				|| (row + 1 < depthHeight_ && mat_label.at<int>(row + 1, col) != label)
 				|| (col - 1 >= 0 && mat_label.at<int>(row, col - 1) != label)
-				|| (col + 1 < kDepthWidth && mat_label.at<int>(row, col + 1) != label))
+				|| (col + 1 < depthWidth_ && mat_label.at<int>(row, col + 1) != label))
 			{
 				// Pixels in a fixed range near the boundary pixel are also regarded as boundary pixels
-				for (int x = max(row - kNeighborRange, 0); x < min(kDepthHeight, row + kNeighborRange); ++x)
+				for (int x = max(row - neighborRange_, 0); x < min(depthHeight_, row + neighborRange_); ++x)
 				{
-					for (int y = max(col - kNeighborRange, 0); y < min(kDepthWidth, col + kNeighborRange); ++y)
+					for (int y = max(col - neighborRange_, 0); y < min(depthWidth_, col + neighborRange_); ++y)
 					{
 						// If a pixel is not on any plane, then it is not a boundary pixel.
 						if (mat_label.at<int>(x, y) == plane_num_)
 							continue;
-						pixel_boundary_flags_[x * kDepthWidth + y] = true;
+						pixel_boundary_flags_[x * depthWidth_ + y] = true;
 					}
 				}
 			}
@@ -274,7 +288,7 @@ void PlaneDetection::prepareForMRF()
 	for (int pidx = 0; pidx < plane_num_; ++pidx)
 	{
 		int vidx = plane_vertices_[pidx][0];
-		cv::Vec3b c = seg_img_.at<cv::Vec3b>(vidx / kDepthWidth, vidx % kDepthWidth);
+		cv::Vec3b c = seg_img_.at<cv::Vec3b>(vidx / depthWidth_, vidx % depthWidth_);
 		plane_colors_.push_back(c);
 	}
 
@@ -342,15 +356,15 @@ void PlaneDetection::computePlaneSumStats(bool run_mrf /* = false */)
 	{
 		opt_sum_stats_.resize(plane_num_);
 		opt_plane_pixel_nums_.resize(plane_num_, 0);
-		for (int row = 0; row < kDepthHeight; ++row)
+		for (int row = 0; row < depthHeight_; ++row)
 		{
-			for (int col = 0; col < kDepthWidth; ++col)
+			for (int col = 0; col < depthWidth_; ++col)
 			{
 				int label = opt_membership_img_.at<int>(row, col); // plane label each pixel belongs to
 				if (label != plane_num_) // pixel belongs to some plane
 				{
 					opt_plane_pixel_nums_[label]++;
-					int vidx = row * kDepthWidth + col;
+					int vidx = row * depthWidth_ + col;
 					const VertexType& v = cloud.vertices[vidx];
 					opt_sum_stats_[label].sx += v[0];		  opt_sum_stats_[label].sy += v[1];		    opt_sum_stats_[label].sz += v[2];
 					opt_sum_stats_[label].sxx += v[0] * v[0]; opt_sum_stats_[label].syy += v[1] * v[1]; opt_sum_stats_[label].szz += v[2] * v[2];
@@ -369,26 +383,25 @@ void PlaneDetection::computePlaneSumStats(bool run_mrf /* = false */)
 
 	//--------------------------------------------------------------
 	// Only for debug. It doesn't influence the plane detection.
-//	for (int pidx = 0; pidx < plane_num_; ++pidx)
-//	{
-//		double w = 0;
-//		//for (int j = 0; j < 3; ++j)
-//		//	w -= plane_filter.extractedPlanes[pidx]->normal[j] * plane_filter.extractedPlanes[pidx]->center[j];
-//		w -= plane_filter.extractedPlanes[pidx]->normal[0] * sum_stats_[pidx].sx;
-//		w -= plane_filter.extractedPlanes[pidx]->normal[1] * sum_stats_[pidx].sy;
-//		w -= plane_filter.extractedPlanes[pidx]->normal[2] * sum_stats_[pidx].sz;
-//		double sum = 0;
-//		for (int i = 0; i < plane_vertices_[pidx].size(); ++i)
-//		{
-//			int vidx = plane_vertices_[pidx][i];
-//			const VertexType& v = cloud.vertices[vidx];
-//			double dis = w;
-//			for (int j = 0; j < 3; ++j)
-//				dis += v[j] * plane_filter.extractedPlanes[pidx]->normal[j];
-//			sum += dis * dis;
-//		}
-//		sum /= plane_vertices_[pidx].size();
-//		cout << "Distance for plane " << pidx << ": " << sum << endl;
-//	}
+	//	for (int pidx = 0; pidx < plane_num_; ++pidx)
+	//	{
+	//		double w = 0;
+	//		//for (int j = 0; j < 3; ++j)
+	//		//	w -= plane_filter.extractedPlanes[pidx]->normal[j] * plane_filter.extractedPlanes[pidx]->center[j];
+	//		w -= plane_filter.extractedPlanes[pidx]->normal[0] * sum_stats_[pidx].sx;
+	//		w -= plane_filter.extractedPlanes[pidx]->normal[1] * sum_stats_[pidx].sy;
+	//		w -= plane_filter.extractedPlanes[pidx]->normal[2] * sum_stats_[pidx].sz;
+	//		double sum = 0;
+	//		for (int i = 0; i < plane_vertices_[pidx].size(); ++i)
+	//		{
+	//			int vidx = plane_vertices_[pidx][i];
+	//			const VertexType& v = cloud.vertices[vidx];
+	//			double dis = w;
+	//			for (int j = 0; j < 3; ++j)
+	//				dis += v[j] * plane_filter.extractedPlanes[pidx]->normal[j];
+	//			sum += dis * dis;
+	//		}
+	//		sum /= plane_vertices_[pidx].size();
+	//		cout << "Distance for plane " << pidx << ": " << sum << endl;
+	//	}
 }
-
